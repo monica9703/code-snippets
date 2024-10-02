@@ -1,0 +1,61 @@
+//The Below code is to integrate two instances for a specific table with filter conditions using table API
+//Automated the process using a Scheduled Job to run daily basis
+try {
+    var url = "https://dev266364.service-now.com";
+    var table = "sys_user_group";
+    var filter = "active=true";
+    restAPIDataSync(url, table, filter);
+} catch (ex) {
+    var message = ex.message;
+}
+
+function restAPIDataSync(urltoclone, tabletoclone, filterco) {
+    var credentials = gs.getProperty('data_migration.credentials');//create a property in serviceNow to store credentials in JSON format
+    var parsedcreds = JSON.parse(credentials);
+    var usname = parsedcreds.username;
+    var psswd = parsedcreds.password;
+    var r = new sn_ws.RESTMessageV2('');
+    r.setEndpoint(urltoclone + "/api/now/table/" + tabletoclone + "?sysparm_query=" + filterco);
+    request.setHttpMethod('GET');
+    request.setBasicAuth(usname, psswd);
+    request.setRequestHeader("Accept", "application/json");
+    var response = request.execute();
+    var responseBody = response.getBody();
+    var responseJSON = JSON.parse(responseBody);
+    var responsearray = responseJSON.result || [];
+    var recordcount = responsearray.length;
+    if (recordcount > 0) {
+        for (var i = 0; i < responsearray.length; i++) {
+            var currentrecord = responsearray[i];
+            var table = new GlideRecord(tabletoclone);
+            table.addQuery('sys_id', currentrecord.sys_id);
+            table.query();
+            if (table.next()) {
+                this.setFieldValues(currentrecord, table, tabletoclone);
+                table.autoSysFields(false);
+                table.setWorkflow(false);
+                table.update();
+            } else {
+                table.initialize();
+                table.setNewGuidValue(currentrecord.sys_id);
+                this.setFieldValues(currentrecord, table, tabletoclone);
+                table.setWorkflow(false);
+                table.autoSysFields(false);
+                table.insert();
+            }
+        }
+    }
+}
+
+function setFieldValues(currentrecord, table) {
+    for (var field in currentrecord) {
+        if (field == 'sys_id') {
+            continue;
+        } else if (currentrecord[field] && currentrecord[field].value != undefined) {
+            table.setValue(field, currentrecord[field].value);
+        } else {
+            // Handle the case where currentrecord[field] is null or undefined
+            table.setValue(field, currentrecord[field]);
+        }
+    }
+}
